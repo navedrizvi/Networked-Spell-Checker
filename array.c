@@ -42,7 +42,12 @@ struct WordsArray create_word_array_from_file(char *file_name)
     while ((numchars = getline(&buffer, &linecap, fp)) > 0)
     {
         words_array.words[i] = malloc(numchars * sizeof(char));
+        if (buffer[numchars - 1] == '\n')
+        {
+            buffer[numchars - 1] = '\0';
+        }
         strcpy(words_array.words[i], buffer);
+
         i++;
     }
     words_array.length = i;
@@ -51,21 +56,23 @@ struct WordsArray create_word_array_from_file(char *file_name)
     return words_array;
 }
 
-int is_valid_word_in_words(char *word, struct WordsArray words_array)
+// TODO: Buggy seach
+int binary_search(char *word, struct WordsArray words_array)
 {
     //Perform binary search using strcmp - return -1 if not found, else return the index
-    int mid;
     int length = words_array.length;
+    int mid;
     int left = 0;
     int right = length - 1;
 
     while (left <= right)
     {
-        printf("%s", words_array.words[mid]);
         mid = left + (right - left) / 2;
+
         if (strcmp(words_array.words[mid], word) == 0)
             return mid;
-        else if (strcmp(words_array.words[mid], word) > 0)
+
+        if (strcmp(words_array.words[mid], word) > 0)
             right = mid - 1;
         else
             left = mid + 1;
@@ -73,12 +80,30 @@ int is_valid_word_in_words(char *word, struct WordsArray words_array)
     return -1;
 }
 
+// to double check when binary search fails
+int linear_search(char *word, struct WordsArray words_array)
+{
+    for (int i; i < words_array.length; i++)
+    {
+        if (strcmp(words_array.words[i], word) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int main()
 {
     struct WordsArray words_array = create_word_array_from_file(DEFAULT_DICTIONARY);
+    int word_found_index;
+    if ((word_found_index = binary_search("zoid", words_array)) == -1) //if binary search unsuccessful, handle edgecase since bsearch is buggy
+    {
 
-    printf("%d", is_valid_word_in_words("a", words_array));
-    // printf("%d", strcmp("aa", "cdscdsbb"));
+        printf("%dHere\n", word_found_index);
+        word_found_index = linear_search("zoid", words_array);
+        printf("%dHere\n", word_found_index);
+    }
+    printf("%d\n", word_found_index);
+    return 0;
 }
-
-//TODO: Binary search not working properly
