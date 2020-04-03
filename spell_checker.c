@@ -56,7 +56,6 @@ struct WordsArray create_word_array_from_file(char *file_name)
     return words_array;
 }
 
-// TODO: Buggy seach
 int binary_search(char *word, struct WordsArray words_array)
 {
     //Perform binary search using strcmp - return -1 if not found, else return the index
@@ -102,7 +101,7 @@ int main()
 
         printf("%dHere\n", word_found_index);
         word_found_index = linear_search("zoid", words_array);
-        printf("%dHere\n", word_found_index);
+        // printf("%dHere\n", word_found_index);
     }
     printf("%d\n", word_found_index);
     return 0;
