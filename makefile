@@ -2,10 +2,18 @@
 CC = gcc
 CFLAGS= -Wall
 
-objects = server.o
+executables = web_client web_server server
+
+all: web_server web_client server
 
 server: server.c main.h
-	$(CC) $(CFLAGS) -c server.c
+	$(CC) $(CFLAGS) -o server server.c -I.
+
+web_server: web_server.c main.h
+	$(CC) $(CFLAGS) -o web_server web_server.c -I.
+
+web_client: web_client.c main.h
+	$(CC) $(CFLAGS) -o web_client web_client.c -I.
 
 clean :
-	rm $(objects)
+	rm $(executables)

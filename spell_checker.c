@@ -82,7 +82,7 @@ int binary_search(char *word, struct WordsArray words_array)
 // to double check when binary search fails
 int linear_search(char *word, struct WordsArray words_array)
 {
-    for (int i; i < words_array.length; i++)
+    for (int i = 0; i < words_array.length; i++)
     {
         if (strcmp(words_array.words[i], word) == 0)
         {
@@ -90,19 +90,4 @@ int linear_search(char *word, struct WordsArray words_array)
         }
     }
     return -1;
-}
-
-int main()
-{
-    struct WordsArray words_array = create_word_array_from_file(DEFAULT_DICTIONARY);
-    int word_found_index;
-    if ((word_found_index = binary_search("zoid", words_array)) == -1) //if binary search unsuccessful, handle edgecase since bsearch is buggy
-    {
-
-        printf("%dHere\n", word_found_index);
-        word_found_index = linear_search("zoid", words_array);
-        // printf("%dHere\n", word_found_index);
-    }
-    printf("%d\n", word_found_index);
-    return 0;
 }
