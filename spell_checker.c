@@ -3,13 +3,11 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
-
 struct WordsArray
 {
     char **words;
     int length;
 };
-
 struct WordsArray create_word_array_from_file(char *file_name)
 {
     struct WordsArray words_array;
