@@ -12,10 +12,11 @@ int main(int argc, char *argv[])
   int socket_fd;
   struct sockaddr_in servaddr;
   char *host;
+  int port_number;
 
-  if (argc != 2)
+  if (argc < 2)
   {
-    fprintf(stderr, "usage: %s host\n", argv[0]);
+    fprintf(stderr, "usage: %s host [server_port_n]\n", argv[0]);
     exit(1);
   }
   host = argv[1];
@@ -30,16 +31,25 @@ int main(int argc, char *argv[])
   // assign IP, PORT
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = inet_addr(host);
-  servaddr.sin_port = htons(DEFAULT_PORT);
+  //Set port for server if specified
+  if (argv[2] != NULL)
+  {
+    port_number = atoi(argv[2]);
+  }
+  else
+  {
+    port_number = DEFAULT_PORT;
+  }
 
+  servaddr.sin_port = htons(port_number);
   //Call connect to establish connection with server (servaddr)
-  if (connect(socket_fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+  if (connect(socket_fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
   {
     printf("Connection with the server failed...\n");
     exit(0);
   }
-  else
-    printf("Connected to server..\n");
+  printf("Connected to server..\n");
+  printf("Response from server:\n");
 
   char message[MAX_LINE];
   read(socket_fd, message, sizeof(message));

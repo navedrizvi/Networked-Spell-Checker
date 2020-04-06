@@ -3,8 +3,11 @@
 #include <netinet/in.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <assert.h>
 #include "main.h"
-#include "spell_checker.c"
+#include "spell_checking.c"
+// #include "utility.c"
 
 int main(int argc, char *argv[])
 {
@@ -12,17 +15,29 @@ int main(int argc, char *argv[])
     int socket_fd, connection_fd, client_len;
     struct sockaddr_in servaddr, cliaddr;
     int port_number;
-    struct WordsArray words_array = create_word_array_from_file(DEFAULT_DICTIONARY);
+    char *dict_file;
+    struct WordsArray words_array;
+
+    pthread_mutex_t lock;
+    int rc = pthread_mutex_init(&lock, NULL);
+    //assert(rc == 0)
 
     //Check user arguments and assign accordingly
+    port_number = DEFAULT_PORT;
     if (argv[1] != NULL)
     {
-        port_number = atoi(argv[1]);
+        dict_file = argv[1];
+        if (argv[2] != NULL)
+        {
+            port_number = atoi(argv[2]);
+        }
     }
     else
     {
-        port_number = DEFAULT_PORT;
+        dict_file = DEFAULT_DICTIONARY;
     }
+
+    words_array = create_word_array_from_file(dict_file);
     //Create new socket descriptor
     if ((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == 1)
     {
@@ -48,12 +63,12 @@ int main(int argc, char *argv[])
         printf("Listen failed...\n");
         exit(0);
     }
-    printf("Listenting on port: %d. Waiting for incoming connections...\n\n", port_number);
-
+    printf("Listenting on port: %d\n", port_number);
     //While waits for and accepts incoming connects
     client_len = sizeof(struct sockaddr_in);
     while (1)
     {
+        printf("Waiting for incoming connections...\n\n");
         //Accept incoming connection and create a new CONNECTED descriptor
         connection_fd = accept(socket_fd, (struct sockaddr *)&cliaddr, (socklen_t *)&client_len);
         if (connection_fd == -1)
@@ -69,6 +84,9 @@ int main(int argc, char *argv[])
         puts("Connection closed...\n");
         close(connection_fd);
     }
+
+    //Destroy mutex
+    pthread_mutex_destroy(&lock);
 
     return 0;
 }
@@ -106,9 +124,4 @@ void handle_server_request_response(int socket_connection_fd, struct WordsArray 
 
         write(socket_connection_fd, buff, sizeof(buff));
     }
-}
-
-void remove_newline_from_string(char *str)
-{
-    str[strlen(str) - 1] = '\0';
 }
