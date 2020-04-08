@@ -26,6 +26,7 @@ struct LogQueue
     struct LogNode *head;
     struct LogNode *tail;
     int size;
+    int capacity;
 };
 
 void enqueue_log(struct LogQueue *q, struct LogNode *n)
@@ -68,10 +69,11 @@ struct LogNode *create_new_log(char *word, int correctness)
 }
 
 //create new log queue
-struct LogQueue *allocate_log_queue()
+struct LogQueue *allocate_log_queue(unsigned capacity)
 {
     struct LogQueue *q = (struct LogQueue *)malloc(sizeof(struct LogQueue));
     q->head = q->tail = NULL;
+    q->capacity = capacity;
 
     return q;
 }
@@ -91,6 +93,11 @@ int queue_is_full(struct ClientQueue *queue)
     return (queue->size == queue->capacity);
 }
 
+int log_queue_is_full(struct LogQueue *queue)
+{
+    return (queue->size == queue->capacity);
+}
+
 int queue_is_empty(struct ClientQueue *queue)
 {
     return (queue->size <= 0);
@@ -103,8 +110,6 @@ int log_queue_is_empty(struct LogQueue *queue)
 
 int enqueue(struct ClientQueue *queue, int item)
 {
-    if (queue_is_full(queue)) //Error
-        return -1;
     queue->rear = (queue->rear + 1) % queue->capacity;
     queue->array[queue->rear] = item;
     queue->size = queue->size + 1;
@@ -114,8 +119,6 @@ int enqueue(struct ClientQueue *queue, int item)
 
 int dequeue(struct ClientQueue *queue)
 {
-    if (queue_is_empty(queue)) //Error
-        return -1;
     int item = queue->array[queue->front];
     queue->front = (queue->front + 1) % queue->capacity;
     queue->size = queue->size - 1;

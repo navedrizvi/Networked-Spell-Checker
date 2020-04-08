@@ -13,9 +13,8 @@ int main(int argc, char *argv[])
     pthread_t thread_pool[NUM_WORKERS];
 
     for (int i = 0; i < NUM_CLIENT_THREADS; i++)
-    {
-        Pthread_create(&thread_pool[i], NULL, worker_thread, (void *)argv);
-    }
+        Pthread_create(&thread_pool[i], NULL, client_thread, (void *)argv);
+    sleep(20);
     for (int i = 0; i < NUM_CLIENT_THREADS; i++)
     {
         if (pthread_join(&thread_pool[i], NULL) != 0)
@@ -28,7 +27,7 @@ int main(int argc, char *argv[])
     return EXIT_SUCCESS;
 }
 
-void *worker_thread(void *arg)
+void *client_thread(void *arg)
 {
     int socket_fd;
     struct sockaddr_in servaddr;
@@ -43,7 +42,6 @@ void *worker_thread(void *arg)
         exit(1);
     }
     host = argv[1];
-    printf("%s\n", host);
     if ((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
         unix_error("Socket Creation Failed");
