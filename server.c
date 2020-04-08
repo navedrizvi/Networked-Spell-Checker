@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     struct ClientQueue *client_connections_queue = allocate_client_queue_with_capacity(NUM_CLIENTS);
     struct LogQueue *log_queue = allocate_log_queue();
     struct ThreadArguments *thread_args;
-    pthread_t thread_pool[NUM_WORKERS];
+    pthread_t worker_thread_pool[NUM_WORKERS];
     pthread_t logger_pool[NUM_LOGGERS];
 
     //Initialize mutexes
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
     thread_args = allocate_thread_arguments(words_array, client_connections_queue, log_queue);
     for (int i = 0; i < NUM_WORKERS; i++)
     {
-        Pthread_create(&thread_pool[i], NULL, worker_thread, (void *)thread_args);
+        Pthread_create(&worker_thread_pool[i], NULL, worker_thread, (void *)thread_args);
     }
 
     for (int i = 0; i < NUM_LOGGERS; i++)
@@ -147,7 +147,6 @@ int main(int argc, char *argv[])
             unix_error("Accept Failed");
         }
 
-        // if (client_connections_queue->size < NUM_CLIENTS)
         if (!queue_is_full(client_connections_queue)) //check if queue is not full (NUM_CLIENTS is queue_capacity+1)
         {
             // printf("queue size: %d", client_connections_queue->size); TODO: buggy- does not stop servicing

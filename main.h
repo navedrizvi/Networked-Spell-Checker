@@ -3,6 +3,7 @@
 #define MAX_LINE 200
 #define BACKLOG 10
 #define NUM_CLIENTS 5
+#define NUM_CLIENT_THREADS 50
 #define NUM_WORKERS 6
 #define NUM_LOGGERS 1
 #define DEFAULT_LOG_FILE "log.txt"
