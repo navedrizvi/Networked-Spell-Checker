@@ -15,20 +15,22 @@ pthread_mutex_t log_queue_lock;
 //Condition variables
 pthread_cond_t client_connections_queue_has_item;
 pthread_cond_t client_connections_queue_has_empty_space;
-pthread_cond_t log_queue_is_not_empty;
-pthread_cond_t log_queue_is_not_full;
+pthread_cond_t log_queue_has_item;
+pthread_cond_t log_queue_has_empty_space;
 
-struct WorkerThreadArguments
+struct ThreadArguments
 {
     char **words_array;
-    struct Queue *client_connections_queue;
+    struct ClientQueue *client_connections_queue;
+    struct LogQueue *log_queue;
 };
 
-struct WorkerThreadArguments *allocate_thread_arguments(char **words_array, struct Queue *client_connections_queue)
+struct ThreadArguments *allocate_thread_arguments(char **words_array, struct ClientQueue *connections_queue, struct LogQueue *log_queue)
 {
-    struct WorkerThreadArguments *args = (struct WorkerThreadArguments *)malloc(sizeof(struct WorkerThreadArguments));
+    struct ThreadArguments *args = (struct ThreadArguments *)malloc(sizeof(struct ThreadArguments));
     args->words_array = words_array;
-    args->client_connections_queue = client_connections_queue;
+    args->client_connections_queue = connections_queue;
+    args->log_queue = log_queue;
 
     return args;
 }
@@ -40,10 +42,11 @@ int main(int argc, char *argv[])
     int port_number;
     char *dict_file_name;
     char **words_array;
-    struct Queue *client_connections_queue = allocate_queue_with_capacity(NUM_CLIENTS);
-    struct WorkerThreadArguments *thread_args;
-    //TODO: declare log_queue[???]
+    struct ClientQueue *client_connections_queue = allocate_client_queue_with_capacity(NUM_CLIENTS);
+    struct LogQueue *log_queue = allocate_log_queue();
+    struct ThreadArguments *thread_args;
     pthread_t thread_pool[NUM_WORKERS];
+    pthread_t logger_pool[NUM_LOGGERS];
 
     //Initialize mutexes
     if (pthread_mutex_init(&client_connections_queue_lock, NULL) != 0)
@@ -64,11 +67,11 @@ int main(int argc, char *argv[])
     {
         unix_error("Condition variable initilization error for empty client queue");
     }
-    if (pthread_cond_init(&log_queue_is_not_full, NULL) != 0)
+    if (pthread_cond_init(&log_queue_has_empty_space, NULL) != 0)
     {
         unix_error("Condition variable initilization error for full log queue");
     }
-    if (pthread_cond_init(&log_queue_is_not_empty, NULL) != 0)
+    if (pthread_cond_init(&log_queue_has_item, NULL) != 0)
     {
         unix_error("Condition variable initilization error for empty log queue");
     }
@@ -122,10 +125,15 @@ int main(int argc, char *argv[])
     //===============Establish network connection end==================//
 
     // Create worker threads
-    thread_args = allocate_thread_arguments(words_array, client_connections_queue);
+    thread_args = allocate_thread_arguments(words_array, client_connections_queue, log_queue);
     for (int i = 0; i < NUM_WORKERS; i++)
     {
         Pthread_create(&thread_pool[i], NULL, worker_thread, (void *)thread_args);
+    }
+
+    for (int i = 0; i < NUM_LOGGERS; i++)
+    {
+        Pthread_create(&logger_pool[i], NULL, logger_thread, (void *)thread_args);
     }
 
     printf("Waiting for incoming connections...\n\n");
@@ -142,7 +150,7 @@ int main(int argc, char *argv[])
         // if (client_connections_queue->size < NUM_CLIENTS)
         if (!queue_is_full(client_connections_queue)) //check if queue is not full (NUM_CLIENTS is queue_capacity+1)
         {
-            printf("queue size: %d", client_connections_queue->size);
+            // printf("queue size: %d", client_connections_queue->size); TODO: buggy- does not stop servicing
             puts("New client accepted");
             char msg[] = "\nWelcome to spell checker!\nTo spell check, type the word and press Enter key\nTo exit, press Escape key (ESC) and press Enter key\n\nEnter word to spell check: ";
             write(connection_fd, msg, sizeof(msg));
@@ -164,8 +172,8 @@ int main(int argc, char *argv[])
     //Deallocate condition variables
     pthread_cond_destroy(&client_connections_queue_has_item);
     pthread_cond_destroy(&client_connections_queue_has_empty_space);
-    pthread_cond_destroy(&log_queue_is_not_empty);
-    pthread_cond_destroy(&log_queue_is_not_full);
+    pthread_cond_destroy(&log_queue_has_item);
+    pthread_cond_destroy(&log_queue_has_empty_space);
 
     free(thread_args);
     free(words_array);
@@ -173,7 +181,7 @@ int main(int argc, char *argv[])
 }
 
 // void enqueue_client(int client_connections_queue[], int socket_connection_fd)
-void enqueue_client(struct Queue *client_connections_queue, int socket_connection_fd)
+void enqueue_client(struct ClientQueue *client_connections_queue, int socket_connection_fd)
 {
     pthread_mutex_lock(&client_connections_queue_lock);
 
@@ -191,7 +199,7 @@ void enqueue_client(struct Queue *client_connections_queue, int socket_connectio
     pthread_mutex_unlock(&client_connections_queue_lock);
 }
 
-int dequeue_client(struct Queue *client_connections_queue)
+int dequeue_client(struct ClientQueue *client_connections_queue)
 {
     int client_socket_fd;
     pthread_mutex_lock(&client_connections_queue_lock);
@@ -216,7 +224,7 @@ void *worker_thread(void *arg)
 {
     int connection_fd;
 
-    struct WorkerThreadArguments *thread_args = (struct WorkerThreadArguments *)arg;
+    struct ThreadArguments *thread_args = (struct ThreadArguments *)arg;
 
     while (1)
     {
@@ -224,7 +232,7 @@ void *worker_thread(void *arg)
         {
             connection_fd = dequeue_client(thread_args->client_connections_queue);
 
-            handle_server_request_response(connection_fd, thread_args->words_array);
+            handle_server_request_response(connection_fd, thread_args->words_array, thread_args->log_queue);
 
             puts("Connection closed...\n");
             close(connection_fd);
@@ -232,14 +240,44 @@ void *worker_thread(void *arg)
     }
 }
 
-void *log_thread(void *arg)
+void *logger_thread(void *arg)
 {
+    FILE *log_ptr;
+    struct ThreadArguments *thread_args = (struct ThreadArguments *)arg;
+
+    while (1)
+    {
+        while (!log_queue_is_empty(thread_args->log_queue))
+        {
+            pthread_mutex_lock(&log_queue_lock);
+
+            struct LogNode *log_record = dequeue_log(thread_args->log_queue);
+
+            if ((log_ptr = fopen(DEFAULT_LOG_FILE, "a")) == NULL) //open log file in append mode
+            {
+                unix_error("Error opening log file");
+            }
+            if (log_record->correctness != -1)
+            {
+                fprintf(log_ptr, "%s - OK.\n", log_record->word);
+            }
+            else
+            {
+                fprintf(log_ptr, "%s - MISPELLED.\n", log_record->word);
+            }
+            fclose(log_ptr);
+
+            pthread_mutex_unlock(&log_queue_lock);
+        }
+    }
 }
 
-void handle_server_request_response(int socket_connection_fd, char **words_array)
+void handle_server_request_response(int socket_connection_fd, char **words_array, struct LogQueue *log_queue)
 {
     char buff[MAX_LINE];
     int word_found_index;
+    struct LogNode *log_record;
+
     while (1) //Read while there are word left to read
     {
         bzero(buff, MAX_LINE);
@@ -263,7 +301,13 @@ void handle_server_request_response(int socket_connection_fd, char **words_array
             word_found_index = linear_search(buff, words_array);
         }
 
-        //Copy server message in the buffer and write to client
+        //Write to log file
+        pthread_mutex_lock(&log_queue_lock);
+        log_record = create_new_log(buff, word_found_index);
+        enqueue_log(log_queue, log_record);
+        pthread_mutex_unlock(&log_queue_lock);
+
+        //Copy server message in the buffer
         if (word_found_index == -1)
         {
             strcat(buff, " - MISSPELLED\n\n");
@@ -272,7 +316,10 @@ void handle_server_request_response(int socket_connection_fd, char **words_array
         {
             strcat(buff, " - OK\n\n");
         }
+
         strcat(buff, "Enter word to spell check: ");
+
+        //Send response to client
         write(socket_connection_fd, buff, sizeof(buff));
     }
 }

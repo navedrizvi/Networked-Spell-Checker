@@ -6,17 +6,79 @@
 
 #include "main.h"
 
-//FIFO Queue for client servicing and logging
-struct Queue
+/********************************* FIFO Queues for client servicing and logging **************************************/
+struct ClientQueue
 {
     int front, rear, size;
     unsigned capacity;
     int *array;
 };
 
-struct Queue *allocate_queue_with_capacity(unsigned capacity)
+struct LogNode
 {
-    struct Queue *queue = (struct Queue *)malloc(sizeof(struct Queue));
+    char *word;
+    int correctness; //0 = spelled incorrecly, 1 = spelled correctly
+    struct LogNode *next;
+};
+
+struct LogQueue
+{
+    struct LogNode *head;
+    struct LogNode *tail;
+    int size;
+};
+
+void enqueue_log(struct LogQueue *q, struct LogNode *n)
+{
+    if (q->tail == NULL)
+    {
+        q->head = q->tail = n;
+        q->size += 1;
+        return;
+    }
+
+    q->tail->next = n;
+    q->tail = n;
+    q->size += 1;
+}
+
+struct LogNode *dequeue_log(struct LogQueue *q)
+{
+    struct LogNode *first_log = q->head;
+    q->head = q->head->next;
+    q->size -= 1;
+    if (q->head == NULL)
+    {
+        q->tail = NULL;
+    }
+
+    return first_log;
+}
+
+//Create new log
+struct LogNode *create_new_log(char *word, int correctness)
+{
+    struct LogNode *temp = (struct LogNode *)malloc(sizeof(struct LogNode));
+    temp->word = (char *)malloc(sizeof(char) * strlen(word));
+    strcpy(temp->word, word);
+    temp->correctness = correctness;
+    temp->next = NULL;
+
+    return temp;
+}
+
+//create new log queue
+struct LogQueue *allocate_log_queue()
+{
+    struct LogQueue *q = (struct LogQueue *)malloc(sizeof(struct LogQueue));
+    q->head = q->tail = NULL;
+
+    return q;
+}
+
+struct ClientQueue *allocate_client_queue_with_capacity(unsigned capacity)
+{
+    struct ClientQueue *queue = (struct ClientQueue *)malloc(sizeof(struct ClientQueue));
     queue->capacity = capacity;
     queue->front = queue->size = 0;
     queue->rear = capacity - 1;
@@ -24,17 +86,22 @@ struct Queue *allocate_queue_with_capacity(unsigned capacity)
     return queue;
 }
 
-int queue_is_full(struct Queue *queue)
+int queue_is_full(struct ClientQueue *queue)
 {
     return (queue->size == queue->capacity);
 }
 
-int queue_is_empty(struct Queue *queue)
+int queue_is_empty(struct ClientQueue *queue)
 {
-    return (queue->size == 0);
+    return (queue->size <= 0);
 }
 
-int enqueue(struct Queue *queue, int item)
+int log_queue_is_empty(struct LogQueue *queue)
+{
+    return (queue->size <= 0);
+}
+
+int enqueue(struct ClientQueue *queue, int item)
 {
     if (queue_is_full(queue)) //Error
         return -1;
@@ -45,7 +112,7 @@ int enqueue(struct Queue *queue, int item)
     return 0;
 }
 
-int dequeue(struct Queue *queue)
+int dequeue(struct ClientQueue *queue)
 {
     if (queue_is_empty(queue)) //Error
         return -1;
@@ -56,7 +123,7 @@ int dequeue(struct Queue *queue)
     return item;
 }
 
-//Spell checking helpers
+/********************************* Spell Checking Helpers **************************************/
 char **create_word_array_from_file(char *file_name)
 {
     char **words_array;
@@ -102,15 +169,15 @@ char **create_word_array_from_file(char *file_name)
     return words_array;
 }
 
+//Perform binary search using strcmp - return -1 if not found, else return the index
 int binary_search(char *word, char **words_array)
 {
-    //Perform binary search using strcmp - return -1 if not found, else return the index
     int length = 0;
     char **ptr = words_array;
     while (*ptr != NULL)
     {
         length += 1;
-        *ptr++;
+        ptr++;
     }
 
     int mid;
@@ -141,13 +208,13 @@ int linear_search(char *word, char **words_array)
         {
             return 0;
         }
-        *ptr++;
+        ptr++;
     }
 
     return -1;
 }
 
-// Wrapper functions
+/********************************* Wrapper functions **************************************/
 void remove_newline_from_string(char *str)
 {
     str[strlen(str) - 1] = '\0';
@@ -156,13 +223,13 @@ void remove_newline_from_string(char *str)
 void posix_error(int code, char *msg)
 {
     fprintf(stderr, "%s: %s\n", msg, strerror(code));
-    exit(0);
+    exit(EXIT_FAILURE);
 }
 
 void unix_error(char *msg) /* Unix-style error */
 {
     fprintf(stderr, "%s: %s\n", msg, strerror(errno));
-    exit(0);
+    exit(EXIT_FAILURE);
 }
 
 void Pthread_create(pthread_t *tid, pthread_attr_t *attr,
