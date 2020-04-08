@@ -6,11 +6,11 @@ executables = client server
 
 all: client server
 
-server: server.c main.h
-	$(CC) $(CFLAGS) -o server server.c -I.
+server: server.c utility.c main.h
+	$(CC) $(CFLAGS) -o server server.c -I. -lpthread
 
-client: client.c main.h
-	$(CC) $(CFLAGS) -o client client.c -I.
+client: client.c utility.c main.h
+	$(CC) $(CFLAGS) -o client client.c -I. -lpthread
 
 clean :
 	rm $(executables)

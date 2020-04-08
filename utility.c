@@ -2,65 +2,149 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-#include <semaphore.h>
+#include <stdlib.h>
 
-void P(sem_t *sem);
-void V(sem_t *sem);
-void unix_error(char *msg);
-typedef struct
-{
-    int *buf;    /* Buffer array */
-    int n;       /* Maximum number of slots */
-    int front;   /* buf[(front+1)%n] is first item */
-    int rear;    /* buf[rear%n] is last item */
-    sem_t mutex; /* Protects accesses to buf */
-    sem_t slots; /* Counts available slots */
-    sem_t items; /* Counts available items */
-} sbuf_t;
+#include "main.h"
 
-/* Create an empty, bounded, shared FIFO buffer with n slots */
-void sbuf_init(sbuf_t *sp, int n)
+//FIFO Queue for client servicing and logging
+struct Queue
 {
-    if (sp->buf = calloc(n, sizeof(int)) == NULL)
-    {
-        unix_error("Calloc error");
-    }
-    sp->n = n;                          /* Buffer holds max of n items */
-    sp->front = sp->rear = 0;           /* Empty buffer iff front == rear */
-    if (sem_init(&sp->mutex, 0, 1) < 0) /* Binary semaphore for locking */
-        unix_error("Sem_init error");
-    if (sem_init(&sp->slots, 0, n) < 0) /* Initially, buf has n empty slots */
-        unix_error("Sem_init error");
-    if (sem_init(&sp->items, 0, 0) < 0) /* Initially, buf has zero data items */
-        unix_error("Sem_init error");
+    int front, rear, size;
+    unsigned capacity;
+    int *array;
+};
+
+struct Queue *allocate_queue_with_capacity(unsigned capacity)
+{
+    struct Queue *queue = (struct Queue *)malloc(sizeof(struct Queue));
+    queue->capacity = capacity;
+    queue->front = queue->size = 0;
+    queue->rear = capacity - 1;
+    queue->array = (int *)malloc(queue->capacity * sizeof(int));
+    return queue;
 }
 
-/* Clean up buffer sp */
-void sbuf_deinit(sbuf_t *sp)
+int queue_is_full(struct Queue *queue)
 {
-    free(sp->buf);
+    return (queue->size == queue->capacity);
 }
 
-/* Insert item onto the rear of shared buffer sp */
-void sbuf_insert(sbuf_t *sp, int item)
+int queue_is_empty(struct Queue *queue)
 {
-    P(&sp->slots);                          /* Wait for available slot */
-    P(&sp->mutex);                          /* Lock the buffer */
-    sp->buf[(++sp->rear) % (sp->n)] = item; /* Insert the item */
-    V(&sp->mutex);                          /* Unlock the buffer */
-    V(&sp->items);                          /* Announce available item */
+    return (queue->size == 0);
 }
 
-/* Remove and return the first item from buffer sp */
-int sbuf_remove(sbuf_t *sp)
+int enqueue(struct Queue *queue, int item)
 {
-    int item;
-    P(&sp->items);                           /* Wait for available item */
-    P(&sp->mutex);                           /* Lock the buffer */
-    item = sp->buf[(++sp->front) % (sp->n)]; /* Remove the item */
-    V(&sp->mutex);                           /* Unlock the buffer */
-    V(&sp->slots);                           /* Announce available slot */
+    if (queue_is_full(queue)) //Error
+        return -1;
+    queue->rear = (queue->rear + 1) % queue->capacity;
+    queue->array[queue->rear] = item;
+    queue->size = queue->size + 1;
+
+    return 0;
+}
+
+int dequeue(struct Queue *queue)
+{
+    if (queue_is_empty(queue)) //Error
+        return -1;
+    int item = queue->array[queue->front];
+    queue->front = (queue->front + 1) % queue->capacity;
+    queue->size = queue->size - 1;
+
     return item;
+}
+
+//Spell checking helpers
+char **create_word_array_from_file(char *file_name)
+{
+    char **words_array;
+    char *buffer = NULL;
+    size_t linecap = 0;
+    ssize_t numchars;
+    int i = 0;
+
+    FILE *fp;
+    fp = fopen(file_name, "r");
+    if (fp == NULL)
+    {
+        fprintf(stderr, "error opening file: %s", strerror(errno));
+        exit(0);
+    }
+
+    //Count number of words in file for malloc
+    int words = 0;
+    char ch;
+    while ((ch = fgetc(fp)) != EOF)
+    {
+        // Check words
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\0')
+            words++;
+    }
+    rewind(fp);
+
+    words_array = malloc(words * sizeof(char *));
+
+    while ((numchars = getline(&buffer, &linecap, fp)) > 0)
+    {
+        words_array[i] = malloc(numchars * sizeof(char));
+        if (buffer[numchars - 1] == '\n')
+        {
+            buffer[numchars - 1] = '\0';
+        }
+        strcpy(words_array[i], buffer);
+
+        i++;
+    }
+    fclose(fp);
+
+    return words_array;
+}
+
+int binary_search(char *word, char **words_array)
+{
+    //Perform binary search using strcmp - return -1 if not found, else return the index
+    int length = 0;
+    char **ptr = words_array;
+    while (*ptr != NULL)
+    {
+        length += 1;
+        *ptr++;
+    }
+
+    int mid;
+    int left = 0;
+    int right = length - 1;
+
+    while (left <= right)
+    {
+        mid = left + (right - left) / 2;
+
+        if (strcmp(words_array[mid], word) == 0)
+            return mid;
+
+        if (strcmp(words_array[mid], word) > 0)
+            right = mid - 1;
+        else
+            left = mid + 1;
+    }
+    return -1;
+}
+
+int linear_search(char *word, char **words_array)
+{
+    char **ptr = words_array;
+    while (*ptr != NULL)
+    {
+        if (strcmp(*ptr, word) == 0)
+        {
+            return 0;
+        }
+        *ptr++;
+    }
+
+    return -1;
 }
 
 // Wrapper functions
@@ -81,8 +165,8 @@ void unix_error(char *msg) /* Unix-style error */
     exit(0);
 }
 
-int Pthread_create(pthread_t *tid, pthread_attr_t *attr,
-                   void *(*start_func)(void *), void *arg)
+void Pthread_create(pthread_t *tid, pthread_attr_t *attr,
+                    void *(*start_func)(void *), void *arg)
 {
     int rc;
     if ((rc = pthread_create(tid, attr, start_func, arg)) != 0)
@@ -95,16 +179,4 @@ void Pthread_detach(pthread_t tid)
 
     if ((rc = pthread_detach(tid)) != 0)
         posix_error(rc, "Pthread_detach error");
-}
-
-void P(sem_t *sem)
-{
-    if (sem_wait(sem) < 0)
-        unix_error("P error");
-}
-
-void V(sem_t *sem)
-{
-    if (sem_post(sem) < 0)
-        unix_error("V error");
 }

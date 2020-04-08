@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include "utility.c"
 #include "main.h"
 
 int main(int argc, char *argv[])
@@ -20,17 +21,17 @@ int main(int argc, char *argv[])
     exit(1);
   }
   host = argv[1];
-  socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (socket_fd == -1)
+
+  if ((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
   {
-    printf("Socket creation failed...\n");
-    exit(0);
+    unix_error("Socket Creation Failed");
   }
   bzero(&servaddr, sizeof(servaddr));
 
   // assign IP, PORT
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = inet_addr(host);
+
   //Set port for server if specified
   if (argv[2] != NULL)
   {
@@ -42,11 +43,11 @@ int main(int argc, char *argv[])
   }
 
   servaddr.sin_port = htons(port_number);
+
   //Call connect to establish connection with server (servaddr)
   if (connect(socket_fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
   {
-    printf("Connection with the server failed...\n");
-    exit(0);
+    unix_error("Connection with the server failed..");
   }
   printf("Connected to server..\n");
   printf("Response from server:\n");
@@ -66,7 +67,7 @@ void handle_client_request_response(int socket_fd)
   {
     //Get client input
     bzero(buff, sizeof(buff));
-    printf("Enter word to spell check: ");
+
     n = 0;
     while ((buff[n++] = getchar()) != '\n')
       ;
@@ -82,6 +83,6 @@ void handle_client_request_response(int socket_fd)
 
     //Read response from server
     read(socket_fd, buff, sizeof(buff));
-    printf("Resposne form server : %s", buff);
+    printf("Response form server : %s", buff);
   }
 }
