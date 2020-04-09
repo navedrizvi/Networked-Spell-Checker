@@ -29,6 +29,38 @@ struct LogQueue
     int capacity;
 };
 
+struct WordNode
+{
+    char *word;
+    struct WordNode *next;
+};
+
+struct WordQueue
+{
+    struct WordNode *head;
+    struct WordNode *tail;
+    int size;
+    int capacity;
+};
+
+int enqueue_client(struct ClientQueue *queue, int item)
+{
+    queue->rear = (queue->rear + 1) % queue->capacity;
+    queue->array[queue->rear] = item;
+    queue->size = queue->size + 1;
+
+    return 0;
+}
+
+int dequeue_client(struct ClientQueue *queue)
+{
+    int item = queue->array[queue->front];
+    queue->front = (queue->front + 1) % queue->capacity;
+    queue->size = queue->size - 1;
+
+    return item;
+}
+
 void enqueue_log(struct LogQueue *q, struct LogNode *n)
 {
     if (q->tail == NULL)
@@ -56,6 +88,33 @@ struct LogNode *dequeue_log(struct LogQueue *q)
     return first_log;
 }
 
+void enqueue_word(struct WordQueue *q, struct WordNode *n)
+{
+    if (q->tail == NULL)
+    {
+        q->head = q->tail = n;
+        q->size += 1;
+        return;
+    }
+
+    q->tail->next = n;
+    q->tail = n;
+    q->size += 1;
+}
+
+char *dequeue_word(struct WordQueue *q)
+{
+    char *first_word = q->head->word;
+    q->head = q->head->next;
+    q->size -= 1;
+    if (q->head == NULL)
+    {
+        q->tail = NULL;
+    }
+
+    return first_word;
+}
+
 //Create new log
 struct LogNode *create_new_log(char *word, int correctness)
 {
@@ -68,10 +127,32 @@ struct LogNode *create_new_log(char *word, int correctness)
     return temp;
 }
 
-//create new log queue
-struct LogQueue *allocate_log_queue(unsigned capacity)
+//Create new word node
+struct WordNode *create_new_word_node(char *word)
+{
+    struct WordNode *temp = (struct WordNode *)malloc(sizeof(struct WordNode));
+    temp->word = (char *)malloc(sizeof(char) * strlen(word));
+    strcpy(temp->word, word);
+    temp->next = NULL;
+
+    return temp;
+}
+
+//Create new log queue
+struct LogQueue *allocate_log_queue_with_capacity(unsigned capacity)
 {
     struct LogQueue *q = (struct LogQueue *)malloc(sizeof(struct LogQueue));
+    q->head = q->tail = NULL;
+    q->size = 0;
+    q->capacity = capacity;
+
+    return q;
+}
+
+//Create new log queue
+struct WordQueue *allocate_word_queue_with_capacity(unsigned capacity)
+{
+    struct WordQueue *q = (struct WordQueue *)malloc(sizeof(struct WordQueue));
     q->head = q->tail = NULL;
     q->capacity = capacity;
 
@@ -85,6 +166,7 @@ struct ClientQueue *allocate_client_queue_with_capacity(unsigned capacity)
     queue->front = queue->size = 0;
     queue->rear = capacity - 1;
     queue->array = (int *)malloc(queue->capacity * sizeof(int));
+
     return queue;
 }
 
@@ -108,25 +190,58 @@ int log_queue_is_empty(struct LogQueue *queue)
     return (queue->size <= 0);
 }
 
-int enqueue(struct ClientQueue *queue, int item)
+int word_queue_is_empty(struct WordQueue *queue)
 {
-    queue->rear = (queue->rear + 1) % queue->capacity;
-    queue->array[queue->rear] = item;
-    queue->size = queue->size + 1;
-
-    return 0;
-}
-
-int dequeue(struct ClientQueue *queue)
-{
-    int item = queue->array[queue->front];
-    queue->front = (queue->front + 1) % queue->capacity;
-    queue->size = queue->size - 1;
-
-    return item;
+    return (queue->size <= 0);
 }
 
 /********************************* Spell Checking Helpers **************************************/
+
+//Perform binary search using strcmp - return -1 if not found, else return the index
+int binary_search(char *word, char **words_array)
+{
+    int length = 0;
+    char **ptr = words_array;
+    while (*ptr != NULL)
+    {
+        length += 1;
+        ptr++;
+    }
+
+    int mid;
+    int left = 0;
+    int right = length - 1;
+
+    while (left <= right)
+    {
+        mid = left + (right - left) / 2;
+
+        if (strcmp(words_array[mid], word) == 0)
+            return mid;
+
+        if (strcmp(words_array[mid], word) > 0)
+            right = mid - 1;
+        else
+            left = mid + 1;
+    }
+    return -1;
+}
+
+int linear_search(char *word, char **words_array)
+{
+    char **ptr = words_array;
+    while (*ptr != NULL)
+    {
+        if (strcmp(*ptr, word) == 0)
+        {
+            return 0;
+        }
+        ptr++;
+    }
+
+    return -1;
+}
+
 char **create_word_array_from_file(char *file_name)
 {
     char **words_array;
@@ -172,49 +287,44 @@ char **create_word_array_from_file(char *file_name)
     return words_array;
 }
 
-//Perform binary search using strcmp - return -1 if not found, else return the index
-int binary_search(char *word, char **words_array)
+struct WordQueue *create_words_queue_from_file(char *file_name)
 {
-    int length = 0;
-    char **ptr = words_array;
-    while (*ptr != NULL)
+    struct WordQueue *words_queue;
+    struct WordNode *word;
+    char *buffer = NULL;
+    size_t linecap = 0;
+    ssize_t numchars;
+    int i = 0;
+
+    FILE *fp;
+    fp = fopen(file_name, "r");
+    if (fp == NULL)
     {
-        length += 1;
-        ptr++;
+        fprintf(stderr, "error opening file: %s", strerror(errno));
+        exit(0);
     }
 
-    int mid;
-    int left = 0;
-    int right = length - 1;
-
-    while (left <= right)
+    //Count number of words in file for initalizing queue
+    int words = 0;
+    char ch;
+    while ((ch = fgetc(fp)) != EOF)
     {
-        mid = left + (right - left) / 2;
-
-        if (strcmp(words_array[mid], word) == 0)
-            return mid;
-
-        if (strcmp(words_array[mid], word) > 0)
-            right = mid - 1;
-        else
-            left = mid + 1;
+        // Check words
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\0')
+            words++;
     }
-    return -1;
-}
+    rewind(fp);
 
-int linear_search(char *word, char **words_array)
-{
-    char **ptr = words_array;
-    while (*ptr != NULL)
+    words_queue = allocate_word_queue_with_capacity(words);
+    while ((numchars = getline(&buffer, &linecap, fp)) > 0)
     {
-        if (strcmp(*ptr, word) == 0)
-        {
-            return 0;
-        }
-        ptr++;
+        word = create_new_word_node(buffer);
+        enqueue_word(words_queue, word);
+        i++;
     }
+    fclose(fp);
 
-    return -1;
+    return words_queue;
 }
 
 /********************************* Wrapper functions **************************************/

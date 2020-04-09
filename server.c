@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     char *dict_file_name;
     char **words_array;
     struct ClientQueue *client_connections_queue = allocate_client_queue_with_capacity(NUM_CLIENTS);
-    struct LogQueue *log_queue = allocate_log_queue(LOG_CAPACITY);
+    struct LogQueue *log_queue = allocate_log_queue_with_capacity(LOG_CAPACITY);
     struct ThreadArguments *thread_args;
     pthread_t worker_thread_pool[NUM_WORKERS];
     pthread_t logger_pool[NUM_LOGGERS];
@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
             puts("New client accepted");
             char msg[] = "\nWelcome to spell checker!\nTo spell check, type the word and press Enter key\nTo exit, press Escape key (ESC) and press Enter key\n\nEnter word to spell check: ";
             write(connection_fd, msg, sizeof(msg));
-            enqueue_client(client_connections_queue, connection_fd);
+            enqueue_client_thread_safe(client_connections_queue, connection_fd);
         }
         else
         {
@@ -179,10 +179,10 @@ int main(int argc, char *argv[])
     free(thread_args);
     free(words_array);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
-void enqueue_client(struct ClientQueue *client_connections_queue, int socket_connection_fd)
+void enqueue_client_thread_safe(struct ClientQueue *client_connections_queue, int socket_connection_fd)
 {
     pthread_mutex_lock(&client_connections_queue_lock);
 
@@ -190,7 +190,7 @@ void enqueue_client(struct ClientQueue *client_connections_queue, int socket_con
         pthread_cond_wait(&client_connections_queue_has_empty_space, &client_connections_queue_lock); // wait till queue has some empty space
 
     //Insert client
-    enqueue(client_connections_queue, socket_connection_fd);
+    enqueue_client(client_connections_queue, socket_connection_fd);
 
     //Signal waiting threads
     pthread_cond_signal(&client_connections_queue_has_item);
@@ -198,7 +198,7 @@ void enqueue_client(struct ClientQueue *client_connections_queue, int socket_con
     pthread_mutex_unlock(&client_connections_queue_lock);
 }
 
-int dequeue_client(struct ClientQueue *client_connections_queue)
+int dequeue_client_thread_safe(struct ClientQueue *client_connections_queue)
 {
     int client_socket_fd;
     pthread_mutex_lock(&client_connections_queue_lock);
@@ -207,7 +207,7 @@ int dequeue_client(struct ClientQueue *client_connections_queue)
         pthread_cond_wait(&client_connections_queue_has_item, &client_connections_queue_lock); // wait till queue has some item
 
     //Remove element
-    client_socket_fd = dequeue(client_connections_queue);
+    client_socket_fd = dequeue_client(client_connections_queue);
 
     //Signal waiting threads to notify theres empty spot in queue
     pthread_cond_signal(&client_connections_queue_has_empty_space);
@@ -217,7 +217,7 @@ int dequeue_client(struct ClientQueue *client_connections_queue)
     return client_socket_fd;
 }
 
-void enqueue_log_event(struct LogQueue *log_queue, struct LogNode *log_record)
+void enqueue_log_event_thread_safe(struct LogQueue *log_queue, struct LogNode *log_record)
 {
     pthread_mutex_lock(&log_queue_lock);
 
@@ -233,19 +233,19 @@ void enqueue_log_event(struct LogQueue *log_queue, struct LogNode *log_record)
     pthread_mutex_unlock(&log_queue_lock);
 }
 
-struct LogNode *dequeue_log_event(struct LogQueue *log_queue)
+struct LogNode *dequeue_log_event_thread_safe(struct LogQueue *log_queue)
 {
     struct LogNode *log_record;
     pthread_mutex_lock(&log_queue_lock);
 
-    // while (log_queue_is_empty(log_queue))                        //while buffer is empty, condition wait till its not empty
-    //     pthread_cond_wait(&log_queue_has_item, &log_queue_lock); // wait till queue has some item
+    while (log_queue_is_empty(log_queue))                        //while buffer is empty, condition wait till its not empty
+        pthread_cond_wait(&log_queue_has_item, &log_queue_lock); // wait till queue has some item
 
-    // //Remove element
+    //Remove element
     log_record = dequeue_log(log_queue);
 
-    // //Signal waiting threads to notify theres empty spot in queue
-    // pthread_cond_signal(&log_queue_has_empty_space);
+    //Signal waiting threads to notify theres empty spot in queue
+    pthread_cond_signal(&log_queue_has_empty_space);
 
     pthread_mutex_unlock(&log_queue_lock);
 
@@ -262,7 +262,7 @@ void *worker_thread(void *arg)
     {
         while (!queue_is_empty(thread_args->client_connections_queue))
         {
-            connection_fd = dequeue_client(thread_args->client_connections_queue);
+            connection_fd = dequeue_client_thread_safe(thread_args->client_connections_queue);
 
             handle_server_request_response(connection_fd, thread_args->words_array, thread_args->log_queue);
 
@@ -282,18 +282,8 @@ void *logger_thread(void *arg)
     {
         while (!log_queue_is_empty(thread_args->log_queue))
         {
-            //Dequeue event to write to file in a thead safe manner
-            // log_record = dequeue_log(thread_args->log_queue);
-            pthread_mutex_lock(&log_queue_lock);
-
-            // while (log_queue_is_empty(log_queue))                        //while buffer is empty, condition wait till its not empty
-            //     pthread_cond_wait(&log_queue_has_item, &log_queue_lock); // wait till queue has some item
-
-            // //Remove element
-            log_record = dequeue_log(thread_args->log_queue);
-
-            // //Signal waiting threads to notify theres empty spot in queue
-            // pthread_cond_signal(&log_queue_has_empty_space);
+            // Dequeue event to write to file in a thead safe manner
+            log_record = dequeue_log_event_thread_safe(thread_args->log_queue);
 
             if ((log_ptr = fopen(DEFAULT_LOG_FILE, "a")) == NULL) //open log file in append mode
             {
@@ -308,7 +298,6 @@ void *logger_thread(void *arg)
                 fprintf(log_ptr, "%s - MISPELLED.\n", log_record->word);
             }
             fclose(log_ptr);
-            pthread_mutex_unlock(&log_queue_lock);
         }
     }
 }
@@ -344,7 +333,7 @@ void handle_server_request_response(int socket_connection_fd, char **words_array
 
         //Create log event and write to log file
         log_event = create_new_log(buff, word_found_index);
-        enqueue_log_event(log_queue, log_event);
+        enqueue_log_event_thread_safe(log_queue, log_event);
 
         //Copy server message in the buffer
         if (word_found_index == -1)
