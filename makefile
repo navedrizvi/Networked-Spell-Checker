@@ -1,4 +1,4 @@
-#Naved Rizvi, CIS 3207, Project 2
+#Naved Rizvi, CIS 3207, Project 4 
 CC = gcc
 CFLAGS= -Wall
 

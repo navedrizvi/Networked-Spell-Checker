@@ -17,7 +17,7 @@ struct ClientQueue
 struct LogNode
 {
     char *word;
-    int correctness; //0 = spelled incorrecly, 1 = spelled correctly
+    int correctness; //case: 0 = spelled incorrecly, 1 = spelled correctly
     struct LogNode *next;
 };
 
@@ -149,7 +149,7 @@ struct LogQueue *allocate_log_queue_with_capacity(unsigned capacity)
     return q;
 }
 
-//Create new log queue
+//Create new word queue
 struct WordQueue *allocate_word_queue_with_capacity(unsigned capacity)
 {
     struct WordQueue *q = (struct WordQueue *)malloc(sizeof(struct WordQueue));
