@@ -8,8 +8,7 @@ This program is a spell checking multithreaded server. The program makes use of 
 
 1. Open terminal in directory, and run 'make' to run makefile.
 2. Run the executable "./server" which defaults to port 8080 and the words file "dictionary.txt". Additionally you can provide your own new-line separated words text file along with a specific port to run the server on- "./server [words file][port number]"
-3. Run the executable "./client [host][port]" for a client to communicate with the server. If you're running the server locally the host is 127.0.0.1 (localhost, with default port 8080)
-   NOTE: There is also a multithreaded client implementation which can be run by "./multi_client [host][port][input request file]". This would read an input file with words to spell check and utilize multiple threads to send parts of the words as requests to the server.
+3. Run the executable "./client [host][port]" for a client to communicate with the server. If you're running the server locally the host is 127.0.0.1 (localhost, with default port 8080). There is also a multithreaded client implementation which can be run by "./multi_client [host][port][input request file]". This would read an input file with words to spell check and utilize multiple threads to send parts of the words as requests to the server.
 
 ### Program design
 
